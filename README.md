@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite, normally http://127.0.0.1:5173. The simulation starts immediately. All geometry, animations, and fonts are local; there are no runtime API calls, accounts, asset downloads, or paid dependencies.
+Open the local URL printed by Vite, normally http://127.0.0.1:5173. The simulation starts immediately. All geometry, animations, fonts, and music are local; there are no runtime API calls, accounts, external asset downloads, or paid dependencies.
 
 ```powershell
 npm test
@@ -29,6 +29,7 @@ npm run preview
 - **Pause simulation** or Space freezes simulation time and animations. The camera remains usable.
 - **Restart** restores the same seed and population, clears selection/events/blood, and resumes. **Reset camera** restores the original overview separately.
 - Escape or the inspector's close button clears selection.
+- **Music off / on** enables the original 64-second ambient score, **Ashfield After Dark**. Use the adjacent slider for volume. Music starts only after your click, loops seamlessly through Web Audio, and fades/suspends with pause, completion, or a hidden tab. Restart retains your music preference and playback position; reloading defaults to music off.
 
 Human markers are ochre; infected markers are rust. The infected total includes humans currently transforming. The map is fully visible to the observer; characters have limited perception.
 
@@ -58,7 +59,20 @@ Central tuning values are in `src/sim/types.ts`. Change the constructor seed in 
 
 ## PoC boundaries
 
-Exterior-only buildings; procedural block-style animation; no interiors, sound, saves, multiplayer, physics ragdolls, mobile optimization, hosting, or native-engine package. Small decorative details such as benches and rubble are not full physics obstacles. The simulation uses a navigation grid and local steering rather than a physics engine.
+Exterior-only buildings; procedural block-style animation; no interiors, combat sound effects, saves, multiplayer, physics ragdolls, mobile optimization, hosting, or native-engine package. Small decorative details such as benches and rubble are not full physics obstacles. The simulation uses a navigation grid and local steering rather than a physics engine.
+
+## Original soundtrack
+
+`public/audio/ashfield-after-dark.ogg` is an original procedural composition: a D-minor drone, suspended pads, sparse inharmonic bells, heartbeat percussion, and bowed-metal swells. No sampled recordings or external music services are used. It is included under this repository's license.
+
+The committed Ogg is ready to play; FFmpeg is only needed if you want to regenerate it:
+
+```powershell
+node scripts/compose-music.mjs
+ffmpeg -y -i artifacts/music/ashfield-after-dark.wav -c:a libvorbis -q:a 4 public/audio/ashfield-after-dark.ogg
+```
+
+The generator writes a 32 kHz stereo WAV and prints duration, peak, RMS, and loop-boundary measurements. Circularly wrapped note/reverb tails maintain continuity across the loop. Audio is fetched only when music is enabled.
 
 See [the agreed implementation plan](docs/implementation-plan.md), [validation results](docs/validation.md), and [the camera reference](docs/world.png).
 

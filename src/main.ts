@@ -9,10 +9,12 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import { Simulation } from './sim/simulation';
 import { TownScene } from './render/scene';
 import type { State } from './sim/types';
+import { Music } from './audio/music';
 
 const icon = (name: string) => {
   const paths: Record<string, string> = {
     pause: '<path d="M8 5v14M16 5v14"/>', play: '<path d="m8 4 12 8-12 8Z"/>',
+    music: '<path d="M9 18V5l12-2v13M9 9l12-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="18" cy="16" rx="3" ry="2"/>',
     reset: '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>', cross: '<path d="M5 5l14 14M5 19 19 5"/>',
     focus: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><circle cx="12" cy="12" r="3"/>',
     plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>',
@@ -55,13 +57,30 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="sidebar-note"><span class="small-cross">+</span><p>Humans rely on sight.<br>The infected follow the scent.</p></div>
     </aside>
   </main>
-  <footer class="controlbar"><div class="run-controls"><button id="pause" class="primary-button">${icon('pause')}<span>Pause simulation</span><kbd>SPACE</kbd></button><button id="restart" class="secondary-button">${icon('reset')}<span>Restart</span></button></div><div class="footer-note">50 HUMAN LIVES. <span>ONE POSSIBLE END.</span></div><div class="seed">SEED <b>001986</b><span id="performance">LOCAL SIMULATION</span></div></footer>
+  <footer class="controlbar"><div class="run-controls"><button id="pause" class="primary-button">${icon('pause')}<span>Pause simulation</span><kbd>SPACE</kbd></button><button id="restart" class="secondary-button">${icon('reset')}<span>Restart</span></button></div><div class="music-controls"><button id="music" class="secondary-button" aria-pressed="false" title="Ashfield After Dark — original ambient score">${icon('music')}<span id="music-label">Music off</span></button><input id="music-volume" type="range" min="0" max="100" value="28" aria-label="Music volume" title="Music volume"/><span id="music-status" class="sr-only" role="status"></span></div><div class="footer-note">50 HUMAN LIVES. <span>ONE POSSIBLE END.</span></div><div class="seed">SEED <b>001986</b><span id="performance">LOCAL SIMULATION</span></div></footer>
 `;
 
 let sim = new Simulation();
 let selected: number | null = null;
 let view: TownScene;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+const music = new Music();
+function updateMusic() {
+  const button = $<HTMLButtonElement>('music');
+  button.disabled = music.loading;
+  button.setAttribute('aria-pressed', String(music.enabled));
+  button.dataset.audioState = music.state;
+  button.dataset.duration = String(music.duration);
+  $('music-label').textContent = music.loading ? 'Loading…' : music.error ? 'Retry music' : music.enabled ? 'Music on' : 'Music off';
+  button.title = music.error || `Ashfield After Dark · ${music.enabled && (sim.paused || sim.outcome) ? 'paused with simulation' : 'original 64-second ambient loop'}`;
+  $('music-status').textContent = music.error;
+}
+music.onChange = updateMusic;
+$('music').onclick = () => { void music.toggle(); };
+$<HTMLInputElement>('music-volume').oninput = e => music.setVolume(Number((e.target as HTMLInputElement).value) / 100);
+document.addEventListener('visibilitychange', () => music.setPaused(document.hidden || sim.paused || !!sim.outcome));
+window.addEventListener('pagehide', () => music.setPaused(true));
+if (import.meta.hot) import.meta.hot.dispose(() => music.dispose());
 const timeLabel = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const descriptions: Record<State, string> = {
   patrol: 'Moving through the district, searching for signs of life.', pursue: 'Tracking a detected opponent through the streets.',
@@ -92,6 +111,7 @@ function renderInspection() {
 let log: { time: number; text: string; kind: string }[] = [];
 const previousState = new Map<number, State>();
 function updateUI() {
+  music.setPaused(document.hidden || sim.paused || !!sim.outcome); updateMusic();
   const c = sim.counts;
   $('viewport').dataset.simTime = String(sim.time);
   $('viewport').dataset.agentState = JSON.stringify(sim.agents.map(a => [a.id, a.x, a.z, a.hp, a.state]));
@@ -126,7 +146,7 @@ function restart() {
 $('pause').onclick = togglePause; $('restart').onclick = restart;
 $('clear-selection').onclick = () => { selected = null; renderInspection(); };
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); togglePause(); }
+  if (e.code === 'Space' && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); togglePause(); }
   if (e.code === 'Escape') { selected = null; renderInspection(); }
 });
 
