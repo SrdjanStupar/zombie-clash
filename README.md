@@ -1,5 +1,7 @@
 # Zombie Clash
 
+This proof of concept tests **GPT-6 Astra's ability to design and implement a complete 3D experience**: an autonomous browser simulation with a procedural town, animated characters, navigation, perception, tactical behavior, combat, UI, original music, tests, and performance validation. GPT-6 Astra created the application; the finished simulation runs entirely as local game code and makes no runtime AI or API calls.
+
 An autonomous 3D survival simulation in a ruined, miniature town. Fifty humans with machetes face fifty zombies. You observe; you cannot command either side.
 
 ## Run locally
@@ -37,17 +39,17 @@ Human markers are ochre; infected markers are rust. The infected total includes 
 
 Humans see up to 29 meters through a forward 140-degree cone, with close-contact awareness in any direction. Buildings, wrecks, dumpsters, and the fountain block vision. Zombies smell living humans within 70 meters, including through buildings, but still need a route around obstacles. Neither faction has global knowledge of opponents.
 
-Humans explore, regroup with visible allies, engage favorable local odds, and retreat briefly when outnumbered. Turning away or losing sight does not cancel a retreat: they continue to the escape destination, up to seven seconds, unless cornered. Every retreat exit starts a 22-second reassessment window before another retreat is allowed. Cornered humans fight. Lost contacts outside an active retreat lead to a nine-second last-known-position search, then a town-wide patrol. Local avoidance and a short sideways yielding maneuver keep crowds moving.
+Humans explore and regroup with visible allies. Regroup-capable humans remain near an ally while no threat is visible. They scan while waiting, keeping their normal sight cone and obstacle occlusion, and follow moving allies at a closer distance so they can join a pursuit. In combat, lone humans retreat from any detected zombie, pairs attack one or two zombies but retreat from three or more, groups of three retreat only from a larger force, and groups of four or more pursue aggressively regardless of the nearby swarm size. Turning away or losing sight does not cancel a retreat: they continue to the escape destination, up to seven seconds, unless cornered. Every retreat exit starts a 22-second reassessment window before another retreat is allowed. Cornered humans fight. Lost contacts outside an active retreat lead to a nine-second last-known-position search, then a town-wide patrol. Local avoidance and a short sideways yielding maneuver keep crowds moving.
 
 Movement is now **4× the initial PoC speed**: humans walk at 3.36 m/s, zombies at 2.44 m/s, and retreating humans at 4.2 m/s. The simulation clock, attack cooldowns, damage, conversion time, and music speed are unchanged.
 
-Both factions begin with 100 health. A machete deals 27 damage on a 3.2-second cooldown; a zombie attack deals 16 on a 3.8-second cooldown. Attacks have a 0.48-second windup and can miss if the target moves out of range. Damage is resolved simultaneously each tick.
+Both factions begin with 100 health. A machete deals 35 damageon a 3.2-second cooldown; a zombie attack deals 16 on a 3.8-second cooldown. Attacks have a 0.48-second windup and can miss if the target moves out of range. Damage is resolved simultaneously each tick.
 
 A defeated human becomes a zombie after a four-second transformation. Bites do not convert living humans. Defeated zombies stay dead. Conversions preserve character identity and the total population invariant: **humans + infected + dead = 100**.
 
 The observation ends when either faction reaches zero. Transforming humans already count as infected, so a final conversion can end the run before its animation finishes. A simultaneous last human conversion and last original zombie death is therefore a zombie victory, not a draw. The draw outcome covers zero survivors on both sides.
 
-The default seed, 1986, finishes in approximately four simulated minutes with the faster movement and corrected retreat behavior. Other seeds vary; there is no timeout or forced winner. The original 10–15 minute pacing target has been superseded by the requested movement-speed increase. Background tabs stop accumulating simulation time. Long frame gaps are capped to avoid large catch-up jumps.
+The default seed, 1986, finishes in approximately seven simulated minutes with the current movement and grouping behavior. Other seeds vary; there is no timeout or forced winner. The original 10–15 minute pacing target has been superseded by the requested movement-speed increase. Background tabs stop accumulating simulation time. Long frame gaps are capped to avoid large catch-up jumps.
 
 ## Code map
 

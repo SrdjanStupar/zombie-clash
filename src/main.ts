@@ -84,7 +84,7 @@ if (import.meta.hot) import.meta.hot.dispose(() => music.dispose());
 const timeLabel = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const descriptions: Record<State, string> = {
   patrol: 'Moving through the district, searching for signs of life.', pursue: 'Tracking a detected opponent through the streets.',
-  search: 'Searching the last known position. Contact has been lost.', regroup: 'Moving toward a visible survivor for safety in numbers.',
+  search: 'Searching the last known position. Contact has been lost.', regroup: 'Staying near a visible ally, following their movement and scanning while waiting.',
   retreat: 'Outnumbered. Falling back before reassessing the threat.', attack: 'In close combat. Every opening counts.',
   turning: 'Overwhelmed by the infected. The transformation has begun.', dead: 'Permanently lost. This infected will not rise again.',
 };

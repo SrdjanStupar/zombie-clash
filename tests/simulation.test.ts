@@ -78,11 +78,88 @@ describe('perception and navigation', () => {
   });
 });
 
+describe('human regrouping', () => {
+  it('scans behind a waiting group, pursues a newly seen zombie, and lands a hit', () => {
+    const s = new Simulation(1, empty(), 0);
+    for (let i = 0; i < 4; i++) {
+      const human = s.makeAgent(i * 3, 'human', { x: i * 1.5, z: 0 });
+      human.heading = 0; human.nextThink = 0; s.agents.push(human);
+    }
+    const zombie = s.makeAgent(20, 'zombie', { x: 0, z: -12 });
+    zombie.nextThink = Infinity; s.agents.push(zombie);
+    s.step(); expect(s.agents[0].state).toBe('regroup');
+    expect(s.canDetect(s.agents[0], zombie)).toBe(false);
+    steps(s, 3);
+    expect(s.agents.some(a => a.faction === 'human' && a.target === zombie.id)).toBe(true);
+    steps(s, 8); expect(zombie.hp).toBeLessThan(100);
+  });
+  it('keeps up with a pursuing ally even before the follower sees the enemy', () => {
+    const s = new Simulation(1, empty(), 0);
+    const follower = s.makeAgent(0, 'human', { x: 0, z: 0 });
+    const ally = s.makeAgent(1, 'human', { x: 0, z: 6 });
+    const zombie = s.makeAgent(2, 'zombie', { x: 0, z: 20 });
+    follower.heading = Math.PI; follower.nextThink = 0;
+    ally.state = 'pursue'; ally.path = [{ x: 0, z: 20 }]; ally.nextThink = Infinity;
+    zombie.nextThink = Infinity; s.agents.push(follower, ally, zombie);
+    s.step();
+    expect(follower.state).toBe('regroup'); expect(follower.target).toBeNull();
+    expect(follower.path.length).toBeGreaterThan(0); expect(follower.z).toBeGreaterThan(0);
+  });
+  it('does not acquire a zombie through a wall while scanning', () => {
+    const world = empty();
+    world.obstacles.push({ x: 0, z: -6, w: 20, d: 3, height: 6, kind: 'building', variant: 0, angle: 0 });
+    const s = new Simulation(1, world, 0);
+    const human = s.makeAgent(0, 'human', { x: 0, z: 0 });
+    const ally = s.makeAgent(1, 'human', { x: 2, z: 0 });
+    const zombie = s.makeAgent(2, 'zombie', { x: 0, z: -12 });
+    human.nextThink = 0; ally.nextThink = Infinity; zombie.nextThink = Infinity;
+    s.agents.push(human, ally, zombie); steps(s, 8);
+    expect(human.state).toBe('regroup'); expect(human.target).toBeNull(); expect(human.lastKnown).toBeNull();
+  });
+  it('keeps willing humans grouped after they reach an ally', () => {
+    const s = new Simulation(1, empty(), 0);
+    const follower = s.makeAgent(0, 'human', { x: 0, z: 0 });
+    const ally = s.makeAgent(1, 'human', { x: 0, z: 10 });
+    const zombie = s.makeAgent(2, 'zombie', { x: 80, z: 80 });
+    follower.nextThink = 0; ally.nextThink = Infinity; zombie.nextThink = Infinity;
+    s.agents.push(follower, ally, zombie);
+    s.step(); expect(follower.state).toBe('regroup');
+    steps(s, 1); expect(dist(follower, ally)).toBeLessThan(8);
+    steps(s, 8); expect(follower.state).toBe('regroup');
+    expect(follower.path).toEqual([]); expect(follower.destination).toBeNull();
+  });
+  it('lets a pair attack up to two zombies but retreat from three', () => {
+    const s = new Simulation(1, empty(), 0);
+    const follower = s.makeAgent(0, 'human', { x: 0, z: 0 });
+    const ally = s.makeAgent(1, 'human', { x: 2, z: 0 });
+    const zombie = s.makeAgent(2, 'zombie', { x: 0, z: 12 });
+    follower.heading = 0; follower.nextThink = 0; ally.nextThink = Infinity; zombie.nextThink = Infinity;
+    s.agents.push(follower, ally, zombie);
+    s.step(); expect(follower.state).toBe('pursue'); expect(follower.target).toBe(zombie.id);
+    for (const [id, x] of [[3, -2], [4, 2]] as const) {
+      const threat = s.makeAgent(id, 'zombie', { x, z: 11 }); threat.nextThink = Infinity; s.agents.push(threat);
+    }
+    follower.nextThink = 0; s.step(); expect(follower.state).toBe('retreat');
+  });
+  it('makes lone humans flee while groups of four attack a larger swarm', () => {
+    const lone = new Simulation(1, empty(), 0);
+    const human = lone.makeAgent(0, 'human', { x: 0, z: 0 }), zombie = lone.makeAgent(1, 'zombie', { x: 0, z: 10 });
+    human.heading = 0; human.nextThink = 0; zombie.nextThink = Infinity; lone.agents.push(human, zombie);
+    lone.step(); expect(human.state).toBe('retreat');
+
+    const grouped = new Simulation(1, empty(), 0);
+    const fighter = grouped.makeAgent(0, 'human', { x: 0, z: 0 }); fighter.heading = 0; fighter.nextThink = 0; grouped.agents.push(fighter);
+    for (let i = 1; i < 4; i++) { const ally = grouped.makeAgent(i, 'human', { x: i * 1.5, z: 0 }); ally.nextThink = Infinity; grouped.agents.push(ally); }
+    for (let i = 0; i < 6; i++) { const threat = grouped.makeAgent(10 + i, 'zombie', { x: (i - 2.5) * 1.2, z: 10 + i % 2 }); threat.nextThink = Infinity; grouped.agents.push(threat); }
+    grouped.step(); expect(fighter.state).toBe('pursue'); expect(fighter.target).not.toBeNull();
+  });
+});
+
 describe('combat and accounting', () => {
   it('applies damage only after a windup and respects cooldowns', () => {
     const s = fixture(); s.step(); expect(s.agents[1].hp).toBe(100);
-    steps(s, .55); expect(s.agents[1].hp).toBe(73); expect(s.agents[0].hp).toBe(84);
-    steps(s, .6); expect(s.agents[1].hp).toBe(73); expect(s.agents[0].hp).toBe(84);
+    steps(s, .55); expect(s.agents[1].hp).toBeCloseTo(65); expect(s.agents[0].hp).toBe(84);
+    steps(s, .6); expect(s.agents[1].hp).toBeCloseTo(65); expect(s.agents[0].hp).toBe(84);
   });
   it('cancels a strike when its target moves out of range', () => {
     const s = fixture(); s.step(); s.agents[1].z = 10; steps(s, 1); expect(s.agents[1].hp).toBe(100);

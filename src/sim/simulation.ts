@@ -84,6 +84,9 @@ export class Simulation {
   private think(a: Agent) {
     a.nextThink = this.time + 0.65 + (a.id % 5) * 0.07;
     if (a.strikeAt >= 0) return;
+    // Preserve the original third; recruit 30% of the remaining two thirds (53.33% total).
+    // A separate seeded draw keeps willingness stable without changing the simulation RNG.
+    const willingToRegroup = a.id % 3 === 0 || random(this.seed ^ Math.imul(a.id + 1, 0x9e3779b1))() < 0.3;
     const perceived = this.spatial.near(a, a.faction === 'human' ? RULES.humanSight : RULES.scent).filter(b => this.canDetect(a, b)).sort((b, c) => dist(a, b) - dist(a, c) || b.id - c.id);
     const enemy = perceived[0];
     if (enemy) {
@@ -101,7 +104,12 @@ export class Simulation {
       if (a.faction === 'human') {
         const allies = this.spatial.near(a, 15).filter(b => b.id !== a.id && b.faction === 'human' && this.nav.visible(a, b));
         const threats = perceived.filter(b => dist(a, b) < 16).length;
-        if (threats > allies.length + 1 && this.time >= a.braveUntil && dist(a, enemy) > 2.3) {
+        const closeAllies = allies.filter(b => dist(a, b) <= 9);
+        const groupSize = closeAllies.length + 1;
+        // Four or more survivors commit to the fight. Smaller groups retreat only
+        // when locally outmatched; a lone survivor treats any contact as unsafe.
+        const shouldRetreat = groupSize === 1 ? threats > 0 : groupSize < 4 && threats > groupSize;
+        if (shouldRetreat && this.time >= a.braveUntil && dist(a, enemy) > 2.3) {
           const len = Math.max(1, dist(a, enemy));
           let goal = { x: a.x + (a.x - enemy.x) / len * 10, z: a.z + (a.z - enemy.z) / len * 10 };
           const ally = allies.find(b => dist(b, enemy) > dist(a, enemy) + 2);
@@ -122,11 +130,20 @@ export class Simulation {
       return;
     }
     a.lastKnown = null;
-    if (a.faction === 'human' && a.id % 3 === 0 && a.state !== 'regroup') {
-      const ally = this.spatial.near(a, 16).find(b => b.id !== a.id && b.faction === 'human' && dist(a, b) > 8 && this.nav.visible(a, b));
-      if (ally) { this.state(a, 'regroup'); this.route(a, ally); return; }
+    if (a.faction === 'human' && willingToRegroup) {
+      const allies = this.spatial.near(a, 16)
+        .filter(b => b.id !== a.id && b.faction === 'human' && this.nav.visible(a, b))
+        .sort((b, c) => dist(a, b) - dist(a, c) || b.id - c.id);
+      const ally = allies[0];
+      if (ally) {
+        this.state(a, 'regroup');
+        // Keep up with an ally who moves out instead of waiting eight metres
+        // behind a fight. Idle groups still keep their original gathering radius.
+        if (dist(a, ally) > (ally.path.length || ally.state === 'pursue' ? 3 : 8)) this.route(a, ally);
+        else { a.path = []; a.destination = null; }
+        return;
+      }
     }
-    if (a.state === 'regroup' && this.time - a.stateSince < 6 && a.path.length) return;
     this.state(a, 'patrol');
     const patrol = this.world.patrol;
     if (!patrol.length) return;
@@ -150,7 +167,13 @@ export class Simulation {
       }
     }
     while (a.path.length && dist(a, a.path[0]) < 0.4) a.path.shift();
-    const waypoint = a.path[0]; if (!waypoint) return;
+    const waypoint = a.path[0];
+    if (!waypoint) {
+      // Regrouping used to freeze facing as well as movement, leaving survivors
+      // permanently blind behind them. Scan with the normal sight cone and LOS.
+      if (a.faction === 'human' && a.state === 'regroup') a.heading += RULES.step * Math.PI / 2;
+      return;
+    }
     const dx = waypoint.x - a.x, dz = waypoint.z - a.z, len = Math.hypot(dx, dz);
     const speed = a.faction === 'zombie' ? RULES.zombieSpeed : a.state === 'retreat' ? RULES.retreatSpeed : RULES.humanSpeed;
     let vx = dx / len * speed, vz = dz / len * speed;
