@@ -36,11 +36,12 @@ chords.forEach((chord, bar) => chord.forEach((note, j) => {
   }, .027);
 }));
 // Sparse, original music-box motif; inharmonic partials suggest distant, damaged bells.
+const bellGain = 0.35; // About 9 dB lower, so the bells sit behind the ambient layers.
 for (const [start,note,level] of [[2,74,.10],[7,77,.065],[13,75,.065],[21,69,.08],[27,74,.07],[34,77,.09],[39,81,.055],[45,75,.07],[51,76,.07],[58,73,.05],[61,74,.06]]) {
   const f = hz(note);
   add(start, 12, (random()-.5)*1.2, t => (1-Math.exp(-t*75)) * (
     Math.sin(tau*f*t)*Math.exp(-t/.95) + .32*Math.sin(tau*f*2.756*t)*Math.exp(-t/.42) + .18*Math.sin(tau*f*1.003*t)*Math.exp(-t/2.7)
-  ), level);
+  ), level * bellGain);
 }
 // A distant paired heartbeat every four seconds. No jump-scare peaks.
 for (let beat = 0; beat < 64; beat += 4) for (const [delay, level] of [[0,.09],[.43,.055]]) {

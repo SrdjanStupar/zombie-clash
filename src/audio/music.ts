@@ -23,7 +23,7 @@ export class Music {
       // Resume directly from the click, before the asynchronous asset load.
       await this.context.resume();
       if (!this.buffer) {
-        const response = await fetch(`${import.meta.env.BASE_URL}audio/ashfield-after-dark.ogg`);
+        const response = await fetch(`${import.meta.env.BASE_URL}audio/ashfield-after-dark.ogg?v=2`);
         if (!response.ok) throw new Error('Music download failed');
         this.buffer = await this.context.decodeAudioData(await response.arrayBuffer());
         this.gain = this.context.createGain(); this.gain.gain.value = 0; this.gain.connect(this.context.destination);

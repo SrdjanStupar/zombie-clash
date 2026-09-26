@@ -36,7 +36,8 @@ Unit tests cover terminal outcome rules. A full 14½-minute run was validated he
 
 ## Soundtrack addition
 
-- Generated the original 64-second stereo score “Ashfield After Dark” using the checked-in Node.js synthesizer; encoded as a 566,365-byte, 32 kHz Vorbis asset.
-- WAV master measurements: peak −3.74 dBFS and RMS −14.33 dBFS; the default in-game gain is 28%. No clipping in the generated master.
+- Generated the original 64-second stereo score “Ashfield After Dark” using the checked-in Node.js synthesizer; the revised mix is a 568,735-byte, 32 kHz Vorbis asset.
+- Reduced the bell layer to 35% of its original gain (approximately −9 dB relative to the ambient layers), including its reverb tails.
+- Revised WAV master measurements: peak −3.74 dBFS and RMS −13.49 dBFS; the default in-game gain is 28%. No clipping in the generated master.
 - Browser verified user-initiated decode/playback (`AudioContext` running, decoded duration 64 seconds), the volume slider, and simulation-pause suspension. Music defaults off and uses one looping buffer source, independent of frame scheduling.
 - TypeScript and production build pass with the bundled track. Audio signal/transport checks are not a subjective listening review.
