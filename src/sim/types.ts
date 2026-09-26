@@ -15,10 +15,11 @@ export interface Agent extends Vec2 {
 export type Outcome = 'humans' | 'zombies' | 'draw';
 export interface SimEvent { type: 'attack' | 'hit' | 'conversion' | 'death' | 'complete'; time: number; actor: number; target?: number; outcome?: Outcome }
 export interface Counts { humans: number; zombies: number; turning: number; dead: number; conversions: number }
+export const MOVEMENT_SPEED_MULTIPLIER = 4;
 export const RULES = {
   step: 1 / 20, humanSight: 29, scent: 70, melee: 1.9,
   humanHP: 100, zombieHP: 100, humanDamage: 27, zombieDamage: 16,
   humanCooldown: 3.2, zombieCooldown: 3.8, windup: 0.48,
-  humanSpeed: 0.84, zombieSpeed: 0.61, retreatSpeed: 1.05,
+  humanSpeed: 0.84 * MOVEMENT_SPEED_MULTIPLIER, zombieSpeed: 0.61 * MOVEMENT_SPEED_MULTIPLIER, retreatSpeed: 1.05 * MOVEMENT_SPEED_MULTIPLIER,
   conversionSeconds: 4, memorySeconds: 9,
 } as const;

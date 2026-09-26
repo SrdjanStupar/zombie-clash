@@ -37,7 +37,9 @@ Human markers are ochre; infected markers are rust. The infected total includes 
 
 Humans see up to 29 meters through a forward 140-degree cone, with close-contact awareness in any direction. Buildings, wrecks, dumpsters, and the fountain block vision. Zombies smell living humans within 70 meters, including through buildings, but still need a route around obstacles. Neither faction has global knowledge of opponents.
 
-Humans explore, regroup with visible allies, engage favorable local odds, and retreat briefly when outnumbered. Cornered humans fight. Lost contacts lead to a nine-second last-known-position search, then a town-wide patrol. Local avoidance and a short sideways yielding maneuver keep crowds moving.
+Humans explore, regroup with visible allies, engage favorable local odds, and retreat briefly when outnumbered. Turning away or losing sight does not cancel a retreat: they continue to the escape destination, up to seven seconds, unless cornered. Every retreat exit starts a 22-second reassessment window before another retreat is allowed. Cornered humans fight. Lost contacts outside an active retreat lead to a nine-second last-known-position search, then a town-wide patrol. Local avoidance and a short sideways yielding maneuver keep crowds moving.
+
+Movement is now **4× the initial PoC speed**: humans walk at 3.36 m/s, zombies at 2.44 m/s, and retreating humans at 4.2 m/s. The simulation clock, attack cooldowns, damage, conversion time, and music speed are unchanged.
 
 Both factions begin with 100 health. A machete deals 27 damage on a 3.2-second cooldown; a zombie attack deals 16 on a 3.8-second cooldown. Attacks have a 0.48-second windup and can miss if the target moves out of range. Damage is resolved simultaneously each tick.
 
@@ -45,7 +47,7 @@ A defeated human becomes a zombie after a four-second transformation. Bites do n
 
 The observation ends when either faction reaches zero. Transforming humans already count as infected, so a final conversion can end the run before its animation finishes. A simultaneous last human conversion and last original zombie death is therefore a zombie victory, not a draw. The draw outcome covers zero survivors on both sides.
 
-The default seed, 1986, finishes in approximately 14½ simulated minutes with the current rules. Other seeds vary; there is no timeout, forced winner, or guarantee of a 10–15 minute duration. Background tabs stop accumulating simulation time. Long frame gaps are capped to avoid large catch-up jumps.
+The default seed, 1986, finishes in approximately four simulated minutes with the faster movement and corrected retreat behavior. Other seeds vary; there is no timeout or forced winner. The original 10–15 minute pacing target has been superseded by the requested movement-speed increase. Background tabs stop accumulating simulation time. Long frame gaps are capped to avoid large catch-up jumps.
 
 ## Code map
 

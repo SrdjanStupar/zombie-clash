@@ -54,6 +54,28 @@ describe('perception and navigation', () => {
     const until = h.retreatUntil; h.retreatUntil = 0; h.nextThink = 0; h.heading = 0; s.step();
     expect(h.state).not.toBe('retreat'); expect(h.braveUntil).toBeGreaterThan(until);
   });
+  it('keeps retreating after turning away and losing sight, then suppresses immediate re-retreat', () => {
+    const s = fixture(), [h, z] = s.agents; z.z = 7;
+    const z2 = s.makeAgent(2, 'zombie', { x: 3, z: 7 }); z2.nextThink = Infinity; s.agents.push(z2); h.nextThink = 0;
+    s.step(); const destination = { ...h.destination! }, deadline = h.retreatUntil;
+    expect(h.state).toBe('retreat'); expect(s.canDetect(h, z)).toBe(false);
+    for (let i = 0; i < 35; i++) { s.step(); expect(h.state).toBe('retreat'); expect(h.destination).toEqual(destination); }
+    expect(h.z).toBeLessThan(-6); expect(h.target).toBeNull();
+    // A brief look back must not restart or extend the escape.
+    h.heading = 0; h.nextThink = 0; s.step();
+    expect(h.state).toBe('retreat'); expect(h.retreatUntil).toBe(deadline);
+    steps(s, 1.5); expect(h.state).not.toBe('retreat'); expect(h.braveUntil).toBeGreaterThan(s.time);
+    h.x = 0; h.z = 0; h.heading = 0; h.path = []; h.nextThink = 0; s.step();
+    expect(h.state).toBe('pursue');
+  });
+  it('reassesses a retreat deadline without visible enemies and can fight when cornered', () => {
+    const s = fixture(), [h, z] = s.agents;
+    h.state = 'retreat'; h.retreatUntil = 0; h.heading = Math.PI; h.lastKnown = { x: 0, z: 7 }; h.memoryUntil = 9;
+    h.path = [{ x: 0, z: -10 }]; h.destination = h.path[0]; h.nextThink = 0; z.z = 7;
+    s.step(); expect(h.state).toBe('search'); expect(h.braveUntil).toBeGreaterThan(s.time);
+    h.state = 'retreat'; h.retreatUntil = s.time + 7; h.nextThink = 0; z.x = h.x; z.z = h.z + 1;
+    s.step(); expect(h.state).toBe('attack'); expect(h.strikeAt).toBeGreaterThan(s.time);
+  });
 });
 
 describe('combat and accounting', () => {
@@ -91,6 +113,16 @@ describe('combat and accounting', () => {
 });
 
 describe('time and reproducibility', () => {
+  it('moves both factions and retreating humans four times faster without accelerating the clock', () => {
+    for (const retreating of [false, true]) {
+      const s = fixture(), [h, z] = s.agents;
+      h.target = null; z.target = null; h.path = [{ x: 0, z: 40 }]; h.state = retreating ? 'retreat' : 'patrol';
+      z.x = 50; z.z = 50; z.path = [{ x: 50, z: 85 }];
+      steps(s, 1);
+      expect(h.z).toBeCloseTo((retreating ? 1.05 : .84) * 4, 8);
+      expect(z.z - 50).toBeCloseTo(.61 * 4, 8); expect(s.time).toBe(1);
+    }
+  });
   it('freezes all simulation state while paused', () => {
     const s = fixture(); s.step(); s.paused = true; const before = JSON.stringify(s.agents), t = s.time;
     s.advance(.2); s.step(); expect(s.time).toBe(t); expect(JSON.stringify(s.agents)).toBe(before);

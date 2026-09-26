@@ -6,7 +6,7 @@
 - 15 Vitest tests pass: obstacle occlusion, smell range, human view cone, connected/clear spawning, obstacle routing, lost-contact search, retreat/reassessment, attack windup and cooldown, moving targets, conversion, permanent death, simultaneous strikes in both iteration orders, no infection from a nonlethal hit, victory/draw handling, pause, and frame-group-independent determinism.
 - Dependency installation reports zero known vulnerabilities after updating Vitest to 4.1.11. This is a package-audit result, not a full security assessment.
 
-## Complete simulation runs
+## Initial-speed simulation runs (historical baseline)
 
 The audit runs the actual fixed-step simulation without rendering. The 30-minute audit ceiling only bounds the diagnostic script; the application has no timeout.
 
@@ -18,7 +18,7 @@ The audit runs the actual fixed-step simulation without rendering. The 30-minute
 
 All five runs completed before the diagnostic ceiling. All reported zero population-accounting errors, zero active characters outside navigable ground, and zero stationary noncombatants in the one-minute movement samples. Sampling does not prove that every possible seed is free of stalls. Infected totals include any transformations pending at the terminal tick.
 
-The default run meets the 10–15 minute pacing target. Alternate seeds demonstrate natural outcome and duration variation; the PoC does not guarantee equal win rates or similar duration for every seed.
+The initial-speed default run met the original 10–15 minute pacing target. These results precede the movement-speed and retreat fixes below.
 
 ## Browser checks
 
@@ -41,3 +41,11 @@ Unit tests cover terminal outcome rules. A full 14½-minute run was validated he
 - Revised WAV master measurements: peak −3.74 dBFS and RMS −13.49 dBFS; the default in-game gain is 28%. No clipping in the generated master.
 - Browser verified user-initiated decode/playback (`AudioContext` running, decoded duration 64 seconds), the volume slider, and simulation-pause suspension. Music defaults off and uses one looping buffer source, independent of frame scheduling.
 - TypeScript and production build pass with the bundled track. Audio signal/transport checks are not a subjective listening review.
+
+## 4× movement and retreat/search fix
+
+- Speeds increased to 3.36 m/s for humans, 2.44 m/s for zombies, and 4.2 m/s for human retreats. Local avoidance scales proportionally. Combat, conversion, perception, and simulation time retain their original timing.
+- Retreats now retain their escape route after losing sight, end upon reaching safety, timing out, or being cornered, and always apply the reassessment cooldown. This removes the rapid retreat → search → retreat cycle caused by facing away from zombies.
+- All 18 tests pass, including regressions for losing/reacquiring sight during retreat, retreat expiry without visible enemies, cornered combat, and measured 4× movement over one unchanged simulated second.
+- Five complete runs: seed 1986 **3.97 minutes**, 42 **3.41**, 2026 **4.44**, 7 **3.21**, and 99 **3.23**. All ended naturally in zombie victories. The faster movement changes encounter balance; equal faction win rates are not guaranteed.
+- Every audited run reported zero accounting errors, zero active characters outside navigable ground, and zero stationary noncombatants in one-minute movement samples.

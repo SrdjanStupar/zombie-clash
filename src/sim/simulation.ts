@@ -2,7 +2,7 @@ import { Navigation } from './navigation';
 import { dist, random } from './random';
 import { SpatialIndex } from './spatial';
 import { createWorld } from './world';
-import { RULES, type Agent, type Counts, type Faction, type Outcome, type SimEvent, type State, type Vec2, type World } from './types';
+import { MOVEMENT_SPEED_MULTIPLIER, RULES, type Agent, type Counts, type Faction, type Outcome, type SimEvent, type State, type Vec2, type World } from './types';
 
 const names = ['Morgan', 'Ellis', 'Rowan', 'Alex', 'Riley', 'Sam', 'Casey', 'Ash', 'Jules', 'Blair', 'Reese', 'Drew', 'Quinn', 'Cameron', 'Finley', 'Sage', 'Robin', 'Jamie', 'River', 'Avery'];
 export const active = (a: Agent) => a.state !== 'dead' && a.state !== 'turning';
@@ -67,7 +67,13 @@ export class Simulation {
     // Immediate contact can be perceived from any direction; distant sight is a 140° cone.
     return d < 3 || ((b.x - a.x) * Math.sin(a.heading) + (b.z - a.z) * Math.cos(a.heading)) / Math.max(d, 0.001) >= Math.cos(70 * Math.PI / 180);
   }
-  private state(a: Agent, next: State) { if (a.state !== next) { a.state = next; a.stateSince = this.time; } }
+  private state(a: Agent, next: State) {
+    if (a.state !== next) {
+      // Every retreat exit, including close combat, gets a reassessment window.
+      if (a.state === 'retreat') { a.braveUntil = this.time + 22; a.nextPath = 0; a.recoveryUntil = 0; }
+      a.state = next; a.stateSince = this.time;
+    }
+  }
   private route(a: Agent, goal: Vec2) {
     if (this.time < a.recoveryUntil && a.path.length) return;
     if (this.time < a.nextPath && a.destination && dist(goal, a.destination) < 5 && a.path.length) return;
@@ -82,23 +88,31 @@ export class Simulation {
     const enemy = perceived[0];
     if (enemy) {
       a.target = enemy.id; a.lastKnown = { x: enemy.x, z: enemy.z }; a.memoryUntil = this.time + RULES.memorySeconds;
+    } else a.target = null;
+    if (a.state === 'retreat') {
+      // Turning away naturally loses the view cone. Keep the escape route instead of
+      // replacing it with a search route back toward the threat on the next think.
+      const reachedSafety = !a.path.length || (a.destination !== null && dist(a, a.destination) < 1);
+      const cornered = enemy !== undefined && dist(a, enemy) <= RULES.melee;
+      if (this.time < a.retreatUntil && !reachedSafety && !cornered) return;
+      this.state(a, enemy ? 'pursue' : 'search');
+    }
+    if (enemy) {
       if (a.faction === 'human') {
         const allies = this.spatial.near(a, 15).filter(b => b.id !== a.id && b.faction === 'human' && this.nav.visible(a, b));
         const threats = perceived.filter(b => dist(a, b) < 16).length;
-        if (a.state === 'retreat' && this.time < a.retreatUntil && dist(a, enemy) > RULES.melee) return;
-        if (a.state === 'retreat') a.braveUntil = this.time + 22;
         if (threats > allies.length + 1 && this.time >= a.braveUntil && dist(a, enemy) > 2.3) {
           const len = Math.max(1, dist(a, enemy));
           let goal = { x: a.x + (a.x - enemy.x) / len * 10, z: a.z + (a.z - enemy.z) / len * 10 };
           const ally = allies.find(b => dist(b, enemy) > dist(a, enemy) + 2);
           if (ally) goal = ally;
           const safe = this.nav.nearest(goal);
-          if (dist(a, safe) > 3) { this.state(a, 'retreat'); a.retreatUntil = this.time + 7; this.route(a, safe); return; }
+          if (dist(a, safe) > 3) { this.state(a, 'retreat'); a.retreatUntil = this.time + 7; a.nextPath = 0; a.recoveryUntil = 0; this.route(a, safe); return; }
           a.braveUntil = this.time + 22;
         }
       }
       this.state(a, dist(a, enemy) <= RULES.melee ? 'attack' : 'pursue');
-      this.route(a, a.lastKnown);
+      this.route(a, enemy);
       return;
     }
     a.target = null;
@@ -108,7 +122,6 @@ export class Simulation {
       return;
     }
     a.lastKnown = null;
-    if (a.state === 'retreat') a.braveUntil = this.time + 22;
     if (a.faction === 'human' && a.id % 3 === 0 && a.state !== 'regroup') {
       const ally = this.spatial.near(a, 16).find(b => b.id !== a.id && b.faction === 'human' && dist(a, b) > 8 && this.nav.visible(a, b));
       if (ally) { this.state(a, 'regroup'); this.route(a, ally); return; }
@@ -144,7 +157,7 @@ export class Simulation {
     for (const b of this.spatial.near(a, 1.15)) {
       if (b.id === a.id) continue;
       const d = dist(a, b);
-      if (d > 0.01 && d < 0.95) { const f = (0.95 - d) * 1.5; vx += (a.x - b.x) / d * f; vz += (a.z - b.z) / d * f; }
+      if (d > 0.01 && d < 0.95) { const f = (0.95 - d) * 1.5 * MOVEMENT_SPEED_MULTIPLIER; vx += (a.x - b.x) / d * f; vz += (a.z - b.z) / d * f; }
     }
     const scale = Math.min(1, speed / Math.max(speed, Math.hypot(vx, vz)));
     const before = { x: a.x, z: a.z }, step = Math.min(RULES.step, len / speed);
