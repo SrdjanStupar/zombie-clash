@@ -17,7 +17,7 @@ export interface SimEvent { type: 'attack' | 'hit' | 'conversion' | 'death' | 'c
 export interface Counts { humans: number; zombies: number; turning: number; dead: number; conversions: number }
 export const MOVEMENT_SPEED_MULTIPLIER = 4;
 export const RULES = {
-  step: 1 / 20, humanSight: 29, scent: 70, melee: 1.9,
+  step: 1 / 20, humanSight: 29, humanHearing: 12, humanMuffledHearing: 4, scent: 70, melee: 1.9,
   humanHP: 100, zombieHP: 100, humanDamage: 35, zombieDamage: 16,
   humanCooldown: 3.2, zombieCooldown: 3.8, windup: 0.48,
   humanSpeed: 0.84 * MOVEMENT_SPEED_MULTIPLIER, zombieSpeed: 0.61 * MOVEMENT_SPEED_MULTIPLIER, retreatSpeed: 1.05 * MOVEMENT_SPEED_MULTIPLIER,

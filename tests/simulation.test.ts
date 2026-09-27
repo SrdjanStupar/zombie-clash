@@ -15,6 +15,21 @@ const fixture = () => {
 const steps = (s: Simulation, seconds: number) => { for (let i = 0; i < seconds / RULES.step; i++) s.step(); };
 
 describe('perception and navigation', () => {
+  it('muffles hearing through obstacles and never detects allies or inactive zombies', () => {
+    const world = empty(); world.obstacles.push({ x: 0, z: 2, w: 12, d: 1, height: 8, kind: 'building', variant: 0, angle: 0 });
+    const s = new Simulation(1, world, 0), human = s.makeAgent(0, 'human', { x: 0, z: 0 }), zombie = s.makeAgent(1, 'zombie', { x: 0, z: 4 });
+    human.heading = Math.PI;
+    expect(s.canSee(human, zombie)).toBe(false); expect(s.canDetect(human, zombie)).toBe(true);
+    zombie.z = 4.1; expect(s.canDetect(human, zombie)).toBe(false);
+    zombie.z = 3; zombie.state = 'dead'; expect(s.canDetect(human, zombie)).toBe(false);
+    zombie.state = 'turning'; expect(s.canDetect(human, zombie)).toBe(false);
+    zombie.state = 'patrol'; zombie.faction = 'human'; expect(s.canDetect(human, zombie)).toBe(false);
+  });
+  it('does not spin an idle human with no detected contacts', () => {
+    const s = fixture(), [h, z] = s.agents;
+    z.z = 60; h.target = null; h.state = 'regroup';
+    steps(s, 2); expect(h.heading).toBe(0);
+  });
   it('limits scent to 70m, including through buildings, while walls block sight', () => {
     const world = empty(); world.obstacles.push({ x: 0, z: 8, w: 12, d: 4, height: 8, kind: 'building', variant: 0, angle: 0 });
     const s = new Simulation(1, world, 0), human = s.makeAgent(0, 'human', { x: 0, z: 0 }), zombie = s.makeAgent(1, 'zombie', { x: 0, z: 15 });
@@ -26,7 +41,8 @@ describe('perception and navigation', () => {
     const s = fixture(), [h, z] = s.agents;
     z.z = 20; expect(s.canDetect(h, z)).toBe(true);
     z.z = 30; expect(s.canDetect(h, z)).toBe(false);
-    z.z = -10; expect(s.canDetect(h, z)).toBe(false);
+    z.z = -10; expect(s.canSee(h, z)).toBe(false); expect(s.canDetect(h, z)).toBe(true);
+    z.z = -13; expect(s.canDetect(h, z)).toBe(false);
     z.z = -2; expect(s.canDetect(h, z)).toBe(true);
   });
   it('routes around buildings without crossing blocked cells', () => {
@@ -58,7 +74,7 @@ describe('perception and navigation', () => {
     const s = fixture(), [h, z] = s.agents; z.z = 7;
     const z2 = s.makeAgent(2, 'zombie', { x: 3, z: 7 }); z2.nextThink = Infinity; s.agents.push(z2); h.nextThink = 0;
     s.step(); const destination = { ...h.destination! }, deadline = h.retreatUntil;
-    expect(h.state).toBe('retreat'); expect(s.canDetect(h, z)).toBe(false);
+    expect(h.state).toBe('retreat'); expect(s.canSee(h, z)).toBe(false); expect(s.canDetect(h, z)).toBe(true);
     for (let i = 0; i < 35; i++) { s.step(); expect(h.state).toBe('retreat'); expect(h.destination).toEqual(destination); }
     expect(h.z).toBeLessThan(-6); expect(h.target).toBeNull();
     // A brief look back must not restart or extend the escape.
@@ -71,7 +87,7 @@ describe('perception and navigation', () => {
   it('reassesses a retreat deadline without visible enemies and can fight when cornered', () => {
     const s = fixture(), [h, z] = s.agents;
     h.state = 'retreat'; h.retreatUntil = 0; h.heading = Math.PI; h.lastKnown = { x: 0, z: 7 }; h.memoryUntil = 9;
-    h.path = [{ x: 0, z: -10 }]; h.destination = h.path[0]; h.nextThink = 0; z.z = 7;
+    h.path = [{ x: 0, z: -10 }]; h.destination = h.path[0]; h.nextThink = 0; z.z = 15;
     s.step(); expect(h.state).toBe('search'); expect(h.braveUntil).toBeGreaterThan(s.time);
     h.state = 'retreat'; h.retreatUntil = s.time + 7; h.nextThink = 0; z.x = h.x; z.z = h.z + 1;
     s.step(); expect(h.state).toBe('attack'); expect(h.strikeAt).toBeGreaterThan(s.time);
@@ -79,7 +95,7 @@ describe('perception and navigation', () => {
 });
 
 describe('human regrouping', () => {
-  it('scans behind a waiting group, pursues a newly seen zombie, and lands a hit', () => {
+  it('hears a zombie behind the group immediately, pursues it, and lands a hit', () => {
     const s = new Simulation(1, empty(), 0);
     for (let i = 0; i < 4; i++) {
       const human = s.makeAgent(i * 3, 'human', { x: i * 1.5, z: 0 });
@@ -87,8 +103,8 @@ describe('human regrouping', () => {
     }
     const zombie = s.makeAgent(20, 'zombie', { x: 0, z: -12 });
     zombie.nextThink = Infinity; s.agents.push(zombie);
-    s.step(); expect(s.agents[0].state).toBe('regroup');
-    expect(s.canDetect(s.agents[0], zombie)).toBe(false);
+    s.step(); expect(s.agents[0].state).toBe('pursue');
+    expect(s.canDetect(s.agents[0], zombie)).toBe(true);
     steps(s, 3);
     expect(s.agents.some(a => a.faction === 'human' && a.target === zombie.id)).toBe(true);
     steps(s, 8); expect(zombie.hp).toBeLessThan(100);

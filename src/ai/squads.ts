@@ -11,6 +11,8 @@ export class SquadDirector {
   private versions = new Map<number, number>();
   private appliedSequences = new Map<number, number>();
   private sequence = 0;
+  private motion = new Map<number, { x: number; z: number; since: number }>();
+  stationarySeconds(id: number) { return this.sim.time - (this.motion.get(id)?.since ?? this.sim.time); }
   constructor(readonly sim: Simulation) {}
   observe() {
     const humans = this.sim.agents.filter(a => a.faction === 'human' && active(a)).sort((a, b) => a.id - b.id);
@@ -40,6 +42,11 @@ export class SquadDirector {
       }
     }
     for (const s of this.squads) s.members.sort((a, b) => a - b);
+    for (const s of this.squads) {
+      const leader = byId.get(s.id)!, prior = this.motion.get(s.id);
+      if (!prior || dist(leader, prior) >= 1) this.motion.set(s.id, { x: leader.x, z: leader.z, since: this.sim.time });
+    }
+    for (const id of this.motion.keys()) if (!this.squads.some(s => s.id === id)) this.motion.delete(id);
     for (const s of this.squads) {
       if (previous.get(s.id) === s.members.join(',')) continue;
       this.versions.set(s.id, (this.versions.get(s.id) ?? 0) + 1);
@@ -74,7 +81,7 @@ export class SquadDirector {
     return { runId, tick: this.sim.tick, time: this.sim.time, sequence: ++this.sequence, decisionSquadIds,
       humans: this.sim.agents.filter(a => a.faction === 'human' && active(a)).map(({ id, x, z, hp }) => ({ id, x, z, hp })),
       sightings: [...this.sightings.values()].map(s => ({ ...s })),
-      squads: this.squads.map(s => ({ ...s, version: this.versions.get(s.id)!, members: [...s.members], orders: decisionSquadIds.includes(s.id) ? this.candidates(s) : [{ id: 'hold', kind: 'hold' }], currentOrder: this.assignments.get(s.id)?.order })),
+      squads: this.squads.map(s => ({ ...s, version: this.versions.get(s.id)!, stationarySeconds: this.stationarySeconds(s.id), members: [...s.members], orders: decisionSquadIds.includes(s.id) ? this.candidates(s) : [{ id: 'hold', kind: 'hold' }], currentOrder: this.assignments.get(s.id)?.order })),
     };
   }
   candidates(squad: Squad): Order[] {
@@ -84,7 +91,8 @@ export class SquadDirector {
       const destination = this.sim.nav.nearest(p);
       if (dist(leader, destination) > 3 && this.sim.nav.path(leader, destination).length) orders.push({ id: `${kind}_${id}`, kind, destination });
     };
-    this.squads.filter(s => s.id !== squad.id).map(s => this.sim.agents.find(a => a.id === s.id)!)
+    this.squads.filter(s => s.id !== squad.id && s.members.length + squad.members.length <= 5).map(s => this.sim.agents.find(a => a.id === s.id)!)
+      .filter(a => dist(leader, a) > 4)
       .sort((a, b) => dist(leader, a) - dist(leader, b) || a.id - b.id).slice(0, 3)
       .forEach(a => orders.push({ id: `regroup_${a.id}`, kind: 'regroup', target: a.id, destination: { x: a.x, z: a.z } }));
     const sightings = [...this.sightings.values()];
@@ -94,7 +102,15 @@ export class SquadDirector {
       .forEach(s => orders.push({ id: `search_${s.id}`, kind: 'search', target: s.id, destination: { x: s.x, z: s.z } }));
     for (let i = 0; i < 4; i++) addPoint('retreat', { x: leader.x + Math.sin(i * Math.PI / 2) * 14, z: leader.z + Math.cos(i * Math.PI / 2) * 14 }, i);
     [...this.sim.world.patrol].filter(p => dist(leader, p) > 3).sort((a, b) => dist(leader, a) - dist(leader, b)).slice(0, 3).forEach((p, i) => addPoint('advance', p, i));
-    return orders;
+    // Once idle for three seconds, ask Jev to choose a movement task. Keep hold
+    // available in immediate melee or when navigation offers no alternative.
+    const inContact = squad.members.some(id => {
+      const human = this.sim.agents.find(a => a.id === id)!;
+      return this.sim.agents.some(enemy => dist(human, enemy) <= RULES.melee && this.sim.canDetect(human, enemy));
+    });
+    const current = this.instruction(leader);
+    const continuingMovement = current?.destination !== undefined && dist(leader, current.destination) > (current.kind === 'regroup' ? 3 : 1);
+    return (continuingMovement || this.stationarySeconds(squad.id) >= 3) && !inContact && orders.length > 1 ? orders.filter(o => o.kind !== 'hold') : orders;
   }
   apply(snapshot: DecisionSnapshot, response: DecisionResponse) {
     if (!validResponse(response, snapshot) || this.sim.time - snapshot.time > 8) return [];

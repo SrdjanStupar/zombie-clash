@@ -65,7 +65,8 @@ export class Simulation {
     if (!active(b) || a.faction === b.faction) return false;
     const d = dist(a, b);
     if (a.faction === 'zombie') return d <= RULES.scent;
-    return this.canSee(a, b);
+    // Nearby footsteps/growls are audible in every direction; obstacles muffle them.
+    return d <= RULES.humanMuffledHearing || (d <= RULES.humanHearing && this.nav.visible(a, b)) || this.canSee(a, b);
   }
   canSee(a: Agent, b: Vec2) {
     const d = dist(a, b);
@@ -194,9 +195,12 @@ export class Simulation {
     while (a.path.length && dist(a, a.path[0]) < 0.4) a.path.shift();
     const waypoint = a.path[0];
     if (!waypoint) {
-      // Regrouping used to freeze facing as well as movement, leaving survivors
-      // permanently blind behind them. Scan with the normal sight cone and LOS.
-      if (a.faction === 'human' && (a.state === 'regroup' || this.humanDirector)) a.heading += RULES.step * Math.PI / 2;
+      // Face an actual detected contact instead of continuously spinning to scan.
+      if (a.faction === 'human') {
+        const contact = this.spatial.near(a, RULES.humanSight).filter(b => this.canDetect(a, b))
+          .sort((b, c) => dist(a, b) - dist(a, c) || b.id - c.id)[0];
+        if (contact) a.heading = Math.atan2(contact.x - a.x, contact.z - a.z);
+      }
       return;
     }
     const dx = waypoint.x - a.x, dz = waypoint.z - a.z, len = Math.hypot(dx, dz);

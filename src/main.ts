@@ -56,7 +56,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div id="inspection-content"></div>
       </section>
       <section class="activity"><div class="section-heading">EVENT LOG <span class="subtle">LATEST TRANSMISSIONS</span></div><ol id="event-log"><li class="initial-event"><time>00:00</time><span>100 signals detected.<br><small>The district is now under observation.</small></span></li></ol></section>
-      <div class="sidebar-note"><span class="small-cross">+</span><p>Humans rely on sight.<br>The infected follow the scent.</p></div>
+      <div class="sidebar-note"><span class="small-cross">+</span><p>Humans see and hear.<br>The infected follow the scent.</p></div>
     </aside>
   </main>
   <footer class="controlbar"><div class="run-controls"><button id="pause" class="primary-button">${icon('pause')}<span>Pause simulation</span><kbd>SPACE</kbd></button><button id="restart" class="secondary-button">${icon('reset')}<span>Restart</span></button></div><div class="music-controls"><button id="music" class="secondary-button" aria-pressed="false" title="Ashfield After Dark — original ambient score">${icon('music')}<span id="music-label">Music off</span></button><input id="music-volume" type="range" min="0" max="100" value="28" aria-label="Music volume" title="Music volume"/><span id="music-status" class="sr-only" role="status"></span></div><div class="footer-note">50 HUMAN LIVES. <span>ONE POSSIBLE END.</span></div><div class="seed">SEED <b>001986</b><span id="performance">LOCAL SIMULATION</span></div></footer>
@@ -86,7 +86,7 @@ window.addEventListener('pagehide', () => music.setPaused(true));
 if (import.meta.hot) import.meta.hot.dispose(() => { music.dispose(); jev.dispose(); });
 const timeLabel = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const descriptions: Record<State, string> = {
-  hold: 'Holding position and scanning for threats.',
+  hold: 'Holding position and listening for nearby threats.',
   patrol: 'Moving through the district, searching for signs of life.', pursue: 'Tracking a detected opponent through the streets.',
   search: 'Searching the last known position. Contact has been lost.', regroup: 'Staying near a visible ally, following their movement and scanning while waiting.',
   retreat: 'Outnumbered. Falling back before reassessing the threat.', attack: 'In close combat. Every opening counts.',

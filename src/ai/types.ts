@@ -4,7 +4,7 @@ export type OrderKind = 'regroup' | 'retreat' | 'attack' | 'advance' | 'search' 
 export interface Order { id: string; kind: OrderKind; destination?: Vec2; target?: number }
 export interface Squad { id: number; members: number[] }
 export interface Sighting extends Vec2 { id: number; hp: number; seenAt: number }
-export interface SquadSnapshot extends Squad { version: number; orders: Order[]; currentOrder?: Order }
+export interface SquadSnapshot extends Squad { version: number; stationarySeconds: number; orders: Order[]; currentOrder?: Order }
 export interface DecisionSnapshot {
   runId: string; tick: number; time: number; sequence: number; decisionSquadIds: number[];
   humans: { id: number; x: number; z: number; hp: number }[];
