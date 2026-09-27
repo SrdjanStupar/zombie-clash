@@ -18,3 +18,6 @@ These are smoke-test observations, not guarantees of model quality, latency, or 
 
 
 Regression coverage also runs the full opening population for ten simulated seconds with a nonresponding provider, checks that most humans travel rather than hold before initial orders arrive. Once Jev supplies an executable order, it remains in effect until replaced.
+
+
+Movement and perception regressions cover rear hearing, obstacle attenuation, inactive-contact exclusion, heard contacts reaching Jev, no idle spinning, and movement-only choices after prolonged idling or during an unfinished route. Hearing distances and movement policy are gameplay tuning values; live model win rates remain unmeasured.

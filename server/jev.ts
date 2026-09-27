@@ -29,7 +29,7 @@ export function validSnapshot(value: unknown): value is DecisionSnapshot {
     if (!squad || !id(squad.id) || !Number.isSafeInteger(squad.version) || squad.version < 1 || !Array.isArray(squad.members) || squad.members.length < 1 || squad.members.length > 5
       || !squad.members.includes(squad.id) || !squad.members.every(m => s.humans.some(h => h.id === m))
       || !Array.isArray(squad.orders) || squad.orders.length < 1 || squad.orders.length > 19
-      || !squad.orders.every(orderValid) || !squad.orders.some(o => o.kind === 'hold')
+      || !squad.orders.every(orderValid) || !finite(squad.stationarySeconds) || squad.stationarySeconds < 0
       || new Set(squad.orders.map(o => o.id)).size !== squad.orders.length
       || (squad.currentOrder !== undefined && !orderValid(squad.currentOrder))) return false;
     members.push(...squad.members);
@@ -44,11 +44,11 @@ const describeOrder = (order: Order) => `${order.kind}${order.target === undefin
 // candidates again in shared state exceeded Jev's context window at population 50.
 export function stateFor(snapshot: DecisionSnapshot) {
   return {
-    policy: 'Preserve human lives while eliminating zombies. Consider health, local force balance, sighting age and other squads current orders. Avoid pointless oscillation. Unseen zombies are unknown. Coordinates are metres on the x,z plane. Candidate destinations are reachable. Regroup gathers survivors; retreat runs; attack pursues and fights; advance explores; search investigates memory; hold scans. Self-defence in melee is automatic. Questions are independent: do not assume new orders for other squads.',
-    columns: { humans: ['id', 'x', 'z', 'hp'], sightings: ['id', 'x', 'z', 'hp', 'secondsSinceSeen'], squads: ['leaderId', 'memberIds', 'currentOrder'] },
+    policy: 'Preserve human lives while actively eliminating zombies. Prefer purposeful movement: small squads regroup with compatible allies; formed squads advance together, search contacts or attack when favorable; retreat when outmatched. Continue useful movement instead of oscillating. Hold only for an immediate tactical need, not to wait for sightings or scan. After reaching a destination choose the next useful task. stationarySeconds measures lack of leader movement. Consider health, local force balance, contact age and other squads current orders. Contacts include sight and nearby hearing in all directions; undetected zombies are unknown. Coordinates are metres on the x,z plane. Regroup gathers survivors; retreat runs; attack pursues and fights; advance explores; search investigates memory. Self-defence in melee is automatic. Questions are independent: do not assume new orders for other squads.',
+    columns: { humans: ['id', 'x', 'z', 'hp'], sightings: ['id', 'x', 'z', 'hp', 'secondsSinceDetected'], squads: ['leaderId', 'memberIds', 'currentOrder', 'stationarySeconds'] },
     humans: snapshot.humans.map(h => [h.id, rounded(h.x), rounded(h.z), h.hp]),
     sightings: snapshot.sightings.map(s => [s.id, rounded(s.x), rounded(s.z), s.hp, rounded(snapshot.time - s.seenAt)]),
-    squads: snapshot.squads.map(s => [s.id, s.members, s.currentOrder ? describeOrder(s.currentOrder) : 'awaiting orders']),
+    squads: snapshot.squads.map(s => [s.id, s.members, s.currentOrder ? describeOrder(s.currentOrder) : 'awaiting orders', rounded(s.stationarySeconds)]),
     rules: { melee: RULES.melee, humanDamage: RULES.humanDamage, zombieDamage: RULES.zombieDamage, humanCooldown: RULES.humanCooldown, zombieCooldown: RULES.zombieCooldown, humanSpeed: RULES.humanSpeed, zombieSpeed: RULES.zombieSpeed, retreatSpeed: RULES.retreatSpeed },
   };
 }

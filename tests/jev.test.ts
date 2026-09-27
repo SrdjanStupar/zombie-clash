@@ -22,6 +22,32 @@ const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve();
 afterEach(() => vi.useRealTimers());
 
 describe('squad perception and orders', () => {
+  it('shares heard contacts with Jev without requiring a scanning turn', () => {
+    const sim = fixture(); sim.agents[3].z = -10;
+    const snapshot = new SquadDirector(sim).snapshot('run');
+    expect(sim.canSee(sim.agents[0], sim.agents[3])).toBe(false);
+    expect(snapshot.sightings.map(s => s.id)).toContain(3);
+    expect(snapshot.squads[0].orders.some(o => o.id === 'attack_3')).toBe(true);
+  });
+  it('requires a movement choice after prolonged idling, but allows holding in melee', () => {
+    const sim = fixture(), d = new SquadDirector(sim); d.observe();
+    sim.time = 3;
+    let snapshot = d.snapshot('run');
+    expect(snapshot.squads[0].stationarySeconds).toBe(3);
+    expect(snapshot.squads[0].orders.some(o => o.kind === 'hold')).toBe(false);
+    expect(validSnapshot(snapshot)).toBe(true);
+    sim.agents[3].z = 1.5; snapshot = d.snapshot('run');
+    expect(snapshot.squads[0].orders.some(o => o.kind === 'hold')).toBe(true);
+    sim.agents[0].x += 2; snapshot = d.snapshot('run');
+    expect(snapshot.squads[0].stationarySeconds).toBe(0);
+  });
+  it('does not offer hold to interrupt an ongoing route outside melee', () => {
+    const sim = fixture(), d = new SquadDirector(sim);
+    const snapshot = d.snapshot('run'); d.apply(snapshot, answer(snapshot, 'advance'));
+    expect(d.snapshot('run').squads.every(s => s.orders.every(o => o.kind !== 'hold'))).toBe(true);
+    sim.agents[3].z = 1.5;
+    expect(d.snapshot('run').squads[0].orders.some(o => o.kind === 'hold')).toBe(true);
+  });
   it('forms bounded squads, preserves membership, merges rendezvous and removes conversions', () => {
     const sim = fixture(), director = new SquadDirector(sim);
     director.observe(); expect(director.squads.map(s => s.members)).toEqual([[0, 1], [2]]);
@@ -42,7 +68,7 @@ describe('squad perception and orders', () => {
     sim.time = 9; expect(director.snapshot('run').sightings).toEqual([]);
   });
   it('does not reveal unseen zombies through walls', () => {
-    const sim = fixture(); sim.agents[3].z = -12;
+    const sim = fixture(); sim.agents[3].z = -16;
     expect(new SquadDirector(sim).snapshot('run').sightings).toEqual([]);
     const w = world(); w.obstacles.push({ x: 0, z: 6, w: 20, d: 3, height: 6, kind: 'building', variant: 0, angle: 0 });
     const blocked = new Simulation(1, w, 0);
