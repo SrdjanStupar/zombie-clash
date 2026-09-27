@@ -2,6 +2,7 @@ import { Navigation } from './navigation';
 import { dist, random } from './random';
 import { SpatialIndex } from './spatial';
 import { createWorld } from './world';
+import type { SquadDirector } from '../ai/squads';
 import { MOVEMENT_SPEED_MULTIPLIER, RULES, type Agent, type Counts, type Faction, type Outcome, type SimEvent, type State, type Vec2, type World } from './types';
 
 const names = ['Morgan', 'Ellis', 'Rowan', 'Alex', 'Riley', 'Sam', 'Casey', 'Ash', 'Jules', 'Blair', 'Reese', 'Drew', 'Quinn', 'Cameron', 'Finley', 'Sage', 'Robin', 'Jamie', 'River', 'Avery'];
@@ -15,6 +16,7 @@ export class Simulation {
   time = 0;
   tick = 0;
   paused = false;
+  humanDirector?: SquadDirector;
   outcome: Outcome | null = null;
   conversions = 0;
   private accumulator = 0;
@@ -63,6 +65,10 @@ export class Simulation {
     if (!active(b) || a.faction === b.faction) return false;
     const d = dist(a, b);
     if (a.faction === 'zombie') return d <= RULES.scent;
+    return this.canSee(a, b);
+  }
+  canSee(a: Agent, b: Vec2) {
+    const d = dist(a, b);
     if (d > RULES.humanSight || !this.nav.visible(a, b)) return false;
     // Immediate contact can be perceived from any direction; distant sight is a 140° cone.
     return d < 3 || ((b.x - a.x) * Math.sin(a.heading) + (b.z - a.z) * Math.cos(a.heading)) / Math.max(d, 0.001) >= Math.cos(70 * Math.PI / 180);
@@ -84,6 +90,7 @@ export class Simulation {
   private think(a: Agent) {
     a.nextThink = this.time + 0.65 + (a.id % 5) * 0.07;
     if (a.strikeAt >= 0) return;
+    if (a.faction === 'human' && this.humanDirector && this.thinkDirected(a)) return;
     // Preserve the original third; recruit 30% of the remaining two thirds (53.33% total).
     // A separate seeded draw keeps willingness stable without changing the simulation RNG.
     const willingToRegroup = a.id % 3 === 0 || random(this.seed ^ Math.imul(a.id + 1, 0x9e3779b1))() < 0.3;
@@ -150,12 +157,30 @@ export class Simulation {
     if (!a.path.length || (a.destination && dist(a, a.destination) < 2.2)) a.patrolIndex = (a.patrolIndex + 1) % patrol.length;
     this.route(a, patrol[a.patrolIndex]);
   }
+  private thinkDirected(a: Agent) {
+    const order = this.humanDirector!.instruction(a);
+    // No executable order: use local perception, retreat, combat and patrol below.
+    if (!order) return false;
+    a.target = null;
+    const states = { regroup: 'regroup', retreat: 'retreat', attack: 'pursue', advance: 'patrol', search: 'search', hold: 'hold' } as const;
+    this.state(a, states[order.kind]);
+    if (!order.destination || dist(a, order.destination) < (order.kind === 'regroup' ? 3 : 1)) {
+      a.path = []; a.destination = null;
+    } else this.route(a, order.destination);
+    return true;
+  }
   private move(a: Agent) {
     a.moving = false;
     if (a.strikeAt >= 0) return;
+    if (a.faction === 'human' && this.humanDirector) {
+      // A local reflex may defend in contact, but never picks a pursuit target.
+      const contact = this.spatial.near(a, RULES.melee).filter(b => this.canDetect(a, b))
+        .sort((b, c) => dist(a, b) - dist(a, c) || b.id - c.id)[0];
+      a.target = contact?.id ?? null;
+    }
     const target = a.target === null ? undefined : this.agents.find(b => b.id === a.target);
     if (target && active(target) && dist(a, target) < RULES.melee && this.nav.visible(a, target)) {
-      if (a.state !== 'retreat' || dist(a, target) < 1.15) {
+      if (a.state !== 'retreat' || dist(a, target) < 1.15 || (a.faction === 'human' && this.humanDirector)) {
         a.heading = Math.atan2(target.x - a.x, target.z - a.z);
         this.state(a, 'attack');
         if (this.time >= a.cooldown) {
@@ -171,7 +196,7 @@ export class Simulation {
     if (!waypoint) {
       // Regrouping used to freeze facing as well as movement, leaving survivors
       // permanently blind behind them. Scan with the normal sight cone and LOS.
-      if (a.faction === 'human' && a.state === 'regroup') a.heading += RULES.step * Math.PI / 2;
+      if (a.faction === 'human' && (a.state === 'regroup' || this.humanDirector)) a.heading += RULES.step * Math.PI / 2;
       return;
     }
     const dx = waypoint.x - a.x, dz = waypoint.z - a.z, len = Math.hypot(dx, dz);
@@ -213,6 +238,7 @@ export class Simulation {
       if (a.state === 'turning' && this.time >= a.turnAt) { a.hp = RULES.zombieHP; this.state(a, 'patrol'); a.nextThink = 0; }
     }
     this.spatial.rebuild(this.agents);
+    this.humanDirector?.observe();
     for (const a of this.agents) if (active(a)) { if (this.time >= a.nextThink) this.think(a); this.move(a); }
     // Capture all strikes before changing health or allegiance: mutual hits are order-independent.
     const damage = new Map<number, number>();
@@ -232,6 +258,7 @@ export class Simulation {
         this.events.push({ type: 'conversion', time: this.time, actor: a.id });
       } else { this.state(a, 'dead'); a.deathAt = this.time; this.events.push({ type: 'death', time: this.time, actor: a.id }); }
     }
+    this.humanDirector?.observe();
     const c = this.counts;
     if (!c.humans || !c.zombies) {
       this.outcome = !c.humans && !c.zombies ? 'draw' : c.humans ? 'humans' : 'zombies';

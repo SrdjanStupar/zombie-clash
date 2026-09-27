@@ -10,6 +10,7 @@ import { Simulation } from './sim/simulation';
 import { TownScene } from './render/scene';
 import type { State } from './sim/types';
 import { Music } from './audio/music';
+import { JevController } from './ai/controller';
 
 const icon = (name: string) => {
   const paths: Record<string, string> = {
@@ -50,6 +51,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="minor-stats"><span>CONVERTED <b id="converted">00</b></span><span>DEAD <b id="dead">00</b></span></div>
         <div class="turning-line"><span id="turning">0</span> currently turning</div>
       </section>
+      <section class="jev-panel" aria-label="Jev squad command"><div class="section-heading">JEV / SQUAD COMMAND <span id="jev-status">CONNECTING</span></div><p id="jev-message" role="status">Connecting to squad command…</p><button id="jev-retry" class="secondary-button" hidden>Retry Jev</button></section>
       <section class="inspection"><div class="section-heading">FIELD OBSERVATION <button id="clear-selection" class="small-button" aria-label="Clear selection" hidden>${icon('cross')}</button></div>
         <div id="inspection-content"></div>
       </section>
@@ -61,6 +63,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 `;
 
 let sim = new Simulation();
+let jev = new JevController(sim);
 let selected: number | null = null;
 let view: TownScene;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -78,11 +81,12 @@ function updateMusic() {
 music.onChange = updateMusic;
 $('music').onclick = () => { void music.toggle(); };
 $<HTMLInputElement>('music-volume').oninput = e => music.setVolume(Number((e.target as HTMLInputElement).value) / 100);
-document.addEventListener('visibilitychange', () => music.setPaused(document.hidden || sim.paused || !!sim.outcome));
+document.addEventListener('visibilitychange', () => { jev.update(document.hidden); music.setPaused(document.hidden || sim.paused || !!sim.outcome); });
 window.addEventListener('pagehide', () => music.setPaused(true));
-if (import.meta.hot) import.meta.hot.dispose(() => music.dispose());
+if (import.meta.hot) import.meta.hot.dispose(() => { music.dispose(); jev.dispose(); });
 const timeLabel = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const descriptions: Record<State, string> = {
+  hold: 'Holding position and scanning for threats.',
   patrol: 'Moving through the district, searching for signs of life.', pursue: 'Tracking a detected opponent through the streets.',
   search: 'Searching the last known position. Contact has been lost.', regroup: 'Staying near a visible ally, following their movement and scanning while waiting.',
   retreat: 'Outnumbered. Falling back before reassessing the threat.', attack: 'In close combat. Every opening counts.',
@@ -106,11 +110,22 @@ function renderInspection() {
   $('health-value').textContent = a.state === 'turning' ? 'TURNING' : `${Math.ceil(a.hp)} / 100`;
   $('health-fill').style.width = `${a.hp}%`; $('health-fill').style.background = a.faction === 'human' ? 'var(--human)' : 'var(--zombie)';
   $('agent-state').textContent = a.state; $('agent-description').textContent = descriptions[a.state];
+  if (a.faction === 'human') {
+    const info = jev.director.inspect(a.id), assignment = info?.assignment;
+    if (info) {
+      const order = jev.director.instruction(a);
+      const destination = order?.destination;
+      $('agent-description').textContent = `Squad ${info.squad.id + 1} · ${info.squad.members.length} survivors. ${order ? `Jev: ${order.kind}${order.target !== undefined ? ` → #${order.target + 1}` : ''}${destination ? ` (${destination.x.toFixed(0)}, ${destination.z.toFixed(0)})` : ''}. ${(sim.time - assignment!.issuedAt).toFixed(1)}s ago · ${Math.round(assignment!.confidence * 100)}% confidence.` : 'Local survival behavior while awaiting fresh Jev orders.'}`;
+    }
+  }
   $('agent-target').textContent = a.target === null ? 'No contact' : sim.agents.find(b => b.id === a.target)?.name ?? 'No contact';
 }
 let log: { time: number; text: string; kind: string }[] = [];
 const previousState = new Map<number, State>();
 function updateUI() {
+  $('jev-status').textContent = sim.outcome ? 'COMPLETE' : jev.manualPaused ? 'PAUSED' : jev.status.toUpperCase();
+  $('jev-message').textContent = jev.error ? `${jev.error} Humans continue locally; retrying automatically.` : jev.status === 'connecting' ? 'Contacting squad command. Humans act locally while waiting.' : `${jev.director.squads.length} squads · ${jev.queued} queued · ${Math.round(jev.latencyMs)} ms · ${jev.tokens.toLocaleString()} tokens`;
+  $('jev-retry').hidden = !jev.error;
   music.setPaused(document.hidden || sim.paused || !!sim.outcome); updateMusic();
   const c = sim.counts;
   $('viewport').dataset.simTime = String(sim.time);
@@ -118,7 +133,14 @@ function updateUI() {
   $('clock').textContent = timeLabel(sim.time); $('humans').textContent = String(c.humans); $('zombies').textContent = String(c.zombies);
   $('converted').textContent = String(c.conversions).padStart(2, '0'); $('dead').textContent = String(c.dead).padStart(2, '0'); $('turning').textContent = String(c.turning);
   $('human-bar').style.width = `${c.humans / Math.max(1, c.humans + c.zombies) * 100}%`; $('zombie-bar').style.flex = '1';
-  $('pause').innerHTML = `${icon(sim.paused ? 'play' : 'pause')}<span>${sim.paused ? 'Resume simulation' : 'Pause simulation'}</span><kbd>SPACE</kbd>`;
+  const resume = jev.manualPaused;
+  const pauseAction = resume ? 'resume' : 'pause';
+  // Keep the button's children stable between pointer-down and click. Replacing
+  // them every UI tick can swallow a click on its label or icon.
+  if ($('pause').dataset.action !== pauseAction) {
+    $('pause').dataset.action = pauseAction;
+    $('pause').innerHTML = `${icon(resume ? 'play' : 'pause')}<span>${resume ? 'Resume simulation' : 'Pause simulation'}</span><kbd>SPACE</kbd>`;
+  }
   ($('pause') as HTMLButtonElement).disabled = !!sim.outcome;
   $('pause-label').hidden = !sim.paused || !!sim.outcome;
   $('live-status').innerHTML = `<i class="${sim.paused || sim.outcome ? 'inactive' : ''}"></i> ${sim.outcome ? 'COMPLETE' : sim.paused ? 'PAUSED' : 'LIVE'}`;
@@ -135,15 +157,18 @@ function updateUI() {
   if (sim.outcome) $('outcome').innerHTML = `<span class="eyebrow">OBSERVATION COMPLETE</span><h2>${sim.outcome === 'humans' ? 'The living remain.' : sim.outcome === 'zombies' ? 'The district has fallen.' : 'Silence, at last.'}</h2><p>${sim.outcome === 'humans' ? 'Every infected has been eliminated.' : sim.outcome === 'zombies' ? 'No humans remain in Ashfield.' : 'Neither side survived.'}</p><div>${timeLabel(sim.time)} elapsed <span>·</span> ${c.humans} humans <span>·</span> ${c.zombies} infected<br>${c.conversions} converted <span>·</span> ${c.dead} dead</div><button id="run-again" class="primary-button">Observe again ${icon('reset')}</button>`;
   const again = document.getElementById('run-again'); if (again) again.onclick = restart;
 }
-function togglePause() { if (!sim.outcome) { sim.paused = !sim.paused; updateUI(); } }
+function togglePause() { if (!sim.outcome) { jev.togglePause(); updateUI(); } }
 function restart() {
+  jev.dispose();
   const fresh = new Simulation(sim.seed, sim.world);
   // Retain the Simulation object shared by picking and camera helpers.
   Object.assign(sim, fresh); selected = null; lastInspected = undefined; log = []; previousState.clear(); view.resetEffects();
+  jev = new JevController(sim);
   $('event-log').innerHTML = '<li class="initial-event"><time>00:00</time><span>100 signals detected.<br><small>The district is now under observation.</small></span></li>';
   updateUI();
 }
 $('pause').onclick = togglePause; $('restart').onclick = restart;
+$('jev-retry').onclick = () => { jev.retry(); updateUI(); };
 $('clear-selection').onclick = () => { selected = null; renderInspection(); };
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); togglePause(); }
@@ -158,6 +183,7 @@ try {
   const frameTimes: number[] = [];
   function frame(now: number) {
     const delta = (now - previous) / 1000; previous = now;
+    jev.update(document.hidden);
     if (!document.hidden) { sim.advance(delta); view.render(sim, selected); }
     if (now - lastUI > 200) { updateUI(); lastUI = now; $('compass-needle').style.transform = `rotate(${-view.controls.getAzimuthalAngle() * 180 / Math.PI + 45}deg)`; }
     frames++; frameTimes.push(delta * 1000); if (frameTimes.length > 300) frameTimes.shift();
@@ -172,7 +198,7 @@ try {
   }
   // Read-only diagnostics for local browser verification; no character-control API.
   Object.defineProperty(window, '__zombieClash', { value: {
-    snapshot: () => ({ time: sim.time, paused: sim.paused, outcome: sim.outcome, counts: sim.counts, selected, agents: sim.agents.map(a => ({ id: a.id, x: a.x, z: a.z, hp: a.hp, faction: a.faction, state: a.state })), frameMs: [...frameTimes], drawCalls: view.renderer.info.render.calls, triangles: view.renderer.info.render.triangles }),
+    snapshot: () => ({ time: sim.time, paused: sim.paused, outcome: sim.outcome, counts: sim.counts, selected, jev: { status: jev.status, requests: jev.requests, queued: jev.queued, latencyMs: jev.latencyMs, queueWaitSimMs: jev.queueWaitMs, discarded: jev.discarded, tokens: jev.tokens, tokensPerSimMinute: sim.time ? jev.tokens * 60 / sim.time : 0 }, agents: sim.agents.map(a => ({ id: a.id, x: a.x, z: a.z, hp: a.hp, faction: a.faction, state: a.state })), frameMs: [...frameTimes], drawCalls: view.renderer.info.render.calls, triangles: view.renderer.info.render.triangles }),
   } });
   updateUI(); requestAnimationFrame(frame);
 } catch (error) {
