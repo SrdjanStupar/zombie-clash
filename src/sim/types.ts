@@ -1,5 +1,5 @@
 export type Faction = 'human' | 'zombie';
-export type State = 'patrol' | 'pursue' | 'search' | 'regroup' | 'retreat' | 'attack' | 'turning' | 'dead';
+export type State = 'patrol' | 'pursue' | 'search' | 'regroup' | 'retreat' | 'attack' | 'hold' | 'turning' | 'dead';
 export interface Vec2 { x: number; z: number }
 export interface Obstacle extends Vec2 { w: number; d: number; height: number; kind: 'building' | 'car' | 'dumpster' | 'fountain'; variant: number; angle: number }
 export interface World { size: number; seed: number; obstacles: Obstacle[]; patrol: Vec2[] }
